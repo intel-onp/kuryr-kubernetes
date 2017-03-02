@@ -14,10 +14,13 @@
 #    under the License.
 
 import six
+from enum import Enum
+from enum import unique
 
 from kuryr.lib._i18n import _LE
 from kuryr.lib.binding.drivers import utils as kl_utils
 from kuryr.lib import constants as kl_const
+from kuryr.lib import exceptions as kl_exec
 from os_vif.objects import fixed_ip as osv_fixed_ip
 from os_vif.objects import network as osv_network
 from os_vif.objects import route as osv_route
@@ -34,6 +37,12 @@ from kuryr_kubernetes.objects import vif as k_vif
 # REVISIT(ivc): consider making this module part of kuryr-lib
 _VIF_TRANSLATOR_NAMESPACE = "kuryr_kubernetes.vif_translators"
 _VIF_MANAGERS = {}
+
+
+@unique
+class NestedType(Enum):
+    VLAN = 'vlan',
+    MACVLAN = 'macvlan',
 
 
 def neutron_to_osvif_network(neutron_network):
@@ -201,7 +210,7 @@ def _is_port_active(neutron_port):
     return (neutron_port['status'] == kl_const.PORT_STATUS_ACTIVE)
 
 
-def neutron_to_osvif_vif_ovs(vif_plugin, neutron_port, subnets):
+def neutron_to_osvif_vif_ovs(vif_plugin, neutron_port, subnets, **kwargs):
     """Converts Neutron port to VIF object for os-vif 'ovs' plugin.
 
     :param vif_plugin: name of the os-vif plugin to use (i.e. 'ovs')
@@ -251,7 +260,7 @@ def neutron_to_osvif_vif_ovs(vif_plugin, neutron_port, subnets):
     return vif
 
 
-def neutron_to_osvif_vif_nested(vif_plugin, neutron_port, subnets):
+def neutron_to_osvif_vif_nested(vif_plugin, neutron_port, subnets, **kwargs):
     """Converts Neutron port to VIF object for nested containers.
 
     :param vif_plugin: name of the os-vif plugin to use (i.e. 'noop')
@@ -263,21 +272,37 @@ def neutron_to_osvif_vif_nested(vif_plugin, neutron_port, subnets):
 
     details = neutron_port.get('binding:vif_details', {})
     network = _make_vif_network(neutron_port, subnets)
-
-    vif = k_vif.VIFVlanNested(
-        id=neutron_port['id'],
-        address=neutron_port['mac_address'],
-        network=network,
-        has_traffic_filtering=details.get('port_filter', False),
-        preserve_on_delete=False,
-        active=_is_port_active(neutron_port),
-        plugin=vif_plugin,
-        vif_name=_get_vif_name(neutron_port))
-
-    return vif
+    # TODO(mchiappe): consider providing the additional parameters
+    # (e.g. 'vlan_id', 'parent_ifname') via kwargs
 
 
-def neutron_to_osvif_vif(vif_plugin, neutron_port, subnets):
+    if (kwargs.get('nested_type', None) == NestedType.VLAN):
+        return k_vif.VIFVlanNested(
+            id=neutron_port['id'],
+            address=neutron_port['mac_address'],
+            network=network,
+            has_traffic_filtering=details.get('port_filter', False),
+            preserve_on_delete=False,
+            active=_is_port_active(neutron_port),
+            plugin=vif_plugin,
+            vif_name=_get_vif_name(neutron_port))
+    elif (kwargs.get('nested_type', None) == NestedType.MACVLAN):
+        return k_vif.VIFMacvlanNested(
+            id=neutron_port['id'],
+            address=neutron_port['mac_address'],
+            network=network,
+            has_traffic_filtering=details.get('port_filter', False),
+            preserve_on_delete=False,
+            active=_is_port_active(neutron_port),
+            plugin=vif_plugin,
+            vif_name=_get_vif_name(neutron_port))
+    else:
+        # TODO(mchiappe): is this exception fine or create a new
+        # (more specific) one?
+        raise kl_exec.BindingNotSupportedFailure("Missing nested type")
+
+
+def neutron_to_osvif_vif(vif_plugin, neutron_port, subnets, **kwargs):
     """Converts Neutron port to os-vif VIF object.
 
     :param vif_plugin: name of the os-vif plugin to use
@@ -294,7 +319,7 @@ def neutron_to_osvif_vif(vif_plugin, neutron_port, subnets):
                                        name=vif_plugin, invoke_on_load=False)
         _VIF_MANAGERS[vif_plugin] = mgr
 
-    return mgr.driver(vif_plugin, neutron_port, subnets)
+    return mgr.driver(vif_plugin, neutron_port, subnets, **kwargs)
 
 
 def osvif_to_neutron_fixed_ips(subnets):

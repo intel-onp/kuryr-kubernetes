@@ -48,7 +48,11 @@ class NestedVlanPodVIFDriver(generic_vif.GenericPodVIFDriver):
         vlan_id = self._add_subport(neutron, trunk_id, port['id'])
 
         vif_plugin = const.K8S_OS_VIF_NOOP_PLUGIN
-        vif = ovu.neutron_to_osvif_vif(vif_plugin, port, subnets)
+        vif = ovu.neutron_to_osvif_vif(vif_plugin, port, subnets,
+                                       nested_type=ovu.NestedType.VLAN)
+        # TODO(vikasc): evaluate whether we should have stevedore
+        #               driver for getting the link device.
+        vif.parent_ifname = config.CONF.binding.link_iface
         vif.vlan_id = vlan_id
         return vif
 

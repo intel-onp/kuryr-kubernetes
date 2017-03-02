@@ -25,6 +25,22 @@ class VIFVlanNested(obj_osvif.VIFBase):
     fields = {
         # Name of the device to create
         'vif_name': obj_fields.StringField(),
+        # Name of the master interface used to allocated the slave one
+        'parent_ifname': obj_fields.StringField(),
         # vlan ID allocated to this vif
         'vlan_id': obj_fields.IntegerField()
     }
+
+@obj_base.VersionedObjectRegistry.register
+class VIFMacvlanNested(obj_osvif.VIFBase):
+    # This is OVO based macvlan vif.
+
+    VERSION = '1.0'
+
+    fields = {
+        # Name of the device to create
+        'vif_name': obj_fields.StringField(),
+        # Name of the master interface used to allocated the slave one
+        'parent_ifname': obj_fields.StringField()
+    }
+
