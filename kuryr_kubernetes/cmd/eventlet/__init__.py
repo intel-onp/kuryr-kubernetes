@@ -14,5 +14,5 @@
 #    under the License.
 
 import eventlet
-
+eventlet.sleep()
 eventlet.monkey_patch()
